@@ -1,23 +1,23 @@
-{% set device_name = serial_number | default("espHome-SmartStation") %}
-{% set friendly_name = ("espHome SmartStation #" ~ serial_number) | default("espHome SmartStation") %}
-{% set firmware_version = "1.0.0" %}
+
+
+
 
 esphome:
-  name: "{{ device_name }}"
-  friendly_name: "{{ friendly_name }}"
+  name: "esp-1773380630-886"
+  friendly_name: "espHome SmartStation #esp-1773380630-886"
   project:
     name: "mihazzz123.espHome-SmartStation"
     version: "${firmware_version}"
 
 esp32:
-  board: {{ board | default("esp32-c3-devkitm-1") }}
+  board: esp32-c3-devkitm-1
   variant: esp32c3
   framework:
     type: arduino
 
 wifi:
   ap:
-    ssid: "{{ device_name }}-setup"
+    ssid: "esp-1773380630-886-setup"
     password: !secret ap_password
   reboot_timeout: 0s
 
@@ -38,15 +38,15 @@ ota:
 # Настройка I2S аудио (Общий порт для входа и выхода на ESP32-C3)
 i2s_audio:
   - id: i2s_bus
-    i2s_lrclk_pin: {{ speaker_lrclk | default("GPIO3") }}
-    i2s_bclk_pin: {{ speaker_bclk | default("GPIO2") }}
+    i2s_lrclk_pin: GPIO3
+    i2s_bclk_pin: GPIO2
 
 # Динамик (ЦАП PCM5102A)
 speaker:
   - platform: i2s_audio
     id: speaker_id
     i2s_audio_id: i2s_bus
-    i2s_dout_pin: {{ speaker_dout | default("GPIO1") }}
+    i2s_dout_pin: GPIO1
     dac_type: external
     # PCM5102A не требует MCLK (может генерировать его сам из BCLK)
 
@@ -55,7 +55,7 @@ microphone:
   - platform: i2s_audio
     id: microphone_id
     i2s_audio_id: i2s_bus
-    i2s_din_pin: {{ mic_din | default("GPIO6") }}
+    i2s_din_pin: GPIO6
     adc_type: external
     pdm: false
     # INMP441 работает в обычном режиме I2S, используя общие шины BCK/LRCK с ЦАП
@@ -75,7 +75,7 @@ voice_assistant:
 binary_sensor:
   - platform: gpio
     pin:
-      number: {{ action_button | default("GPIO9") }} # Кнопка BOOT на SuperMini (иногда требует внешнюю подтяжку)
+      number: GPIO9 # Кнопка BOOT на SuperMini (иногда требует внешнюю подтяжку)
       inverted: true
       mode: INPUT_PULLUP
     name: "Кнопка активации"
