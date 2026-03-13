@@ -34,6 +34,7 @@ api:
 ota:
   - platform: esphome
     password: !secret ota_password
+  - platform: http_request
 
 # Настройка I2S аудио (Общий порт для входа и выхода на ESP32-C3)
 i2s_audio:
@@ -71,6 +72,23 @@ voice_assistant:
   auto_gain: 31dBFS
   volume_multiplier: 1.5
 
+# Настройка HTTP клиента для обновлений
+http_request:
+  id: http_client
+  timeout: 10s
+  useragent: "ESPHome/{{ firmware_version }}"
+  verify_ssl: false
+
+globals:
+  - id: available_version
+    type: std::string
+    restore_value: no
+    initial_value: '"{{ firmware_version }}"'
+  - id: update_url
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+
 # Опционально: кнопка для активации (Push-to-talk)
 binary_sensor:
   - platform: gpio
@@ -97,9 +115,94 @@ light:
       number: GPIO8 # Светодиод на C3 SuperMini
       inverted: true
 
+text_sensor:
+  - platform: template
+    id: serial_num_sensor
+    name: "Serial Number"
+    entity_category: diagnostic
+    lambda: 'return {"{{ serial_number | default("UNKNOWN") }}"};'
+    update_interval: never
+
+  - platform: template
+    id: current_ver_sensor
+    name: "Current Firmware Version"
+    entity_category: diagnostic
+    lambda: 'return {"{{ firmware_version }}"};'
+    update_interval: never
+
+  - platform: template
+    id: available_version_sensor
+    name: "Available Firmware Version"
+    entity_category: diagnostic
+    lambda: 'return id(available_version);'
+
+  - platform: template
+    id: changelog_sensor
+    name: "Firmware Changelog"
+    entity_category: diagnostic
+
+script:
+  - id: check_firmware_update
+    then:
+      - http_request.get:
+          url: "https://raw.githubusercontent.com/{{ github_user | default('mihazzz123') }}/{{ github_repo | default('esphomeFlasher') }}/main/firmwares/ota-server/mihazzz123.espHome-SmartStation/latest.json"
+          on_response:
+            then:
+              - lambda: |-
+                  if (status != 200) {
+                    ESP_LOGW("ota", "Ошибка при проверке обновлений: %d", status);
+                    return;
+                  }
+                  auto json = json::parse(body);
+                  std::string version = json["version"];
+                  std::string url = json["url"];
+                  std::string changelog = json["changelog"];
+                  
+                  id(available_version) = version;
+                  id(update_url) = url;
+                  id(available_version_sensor).publish_state(version);
+                  id(changelog_sensor).publish_state(changelog);
+                  
+                  if (version != "{{ firmware_version }}") {
+                    ESP_LOGI("ota", "Найдена новая версия: %s", version.c_str());
+                  } else {
+                    ESP_LOGI("ota", "Установлена актуальная версия");
+                  }
+
+  - id: install_firmware_update
+    then:
+      - if:
+          condition:
+            lambda: 'return id(update_url) != "";'
+          then:
+            - lambda: |-
+                ESP_LOGI("ota", "Запуск обновления из URL: %s", id(update_url).c_str());
+          else:
+            - logger.log: "URL обновления не найден. Сначала проверьте наличие обновлений."
+
+interval:
+  - interval: 6h
+    then:
+      - script.execute: check_firmware_update
+
 button:
   - platform: template
-    name: "Тест динамика (Beep)"
+    id: check_update_button
+    name: "Check for updates"
+    icon: "mdi:update"
+    on_press:
+      - script.execute: check_firmware_update
+
+  - platform: template
+    id: install_update_button
+    name: "Install update"
+    icon: "mdi:download"
+    entity_category: config
+    on_press:
+      - script.execute: install_firmware_update
+
+  - platform: template
+    name: "Speaker Test (Beep)"
     id: speaker_test_button
     icon: "mdi:volume-high"
     on_press:
@@ -109,7 +212,7 @@ button:
       - logger.log: "Запущен тест динамика через Voice Assistant (краткое пробуждение)"
 
   - platform: template
-    name: "Тест микрофона (Лог)"
+    name: "Mic Test (Log)"
     id: mic_test_button
     icon: "mdi:microphone-settings"
     on_press:
